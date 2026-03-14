@@ -35,6 +35,11 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+const CHECKPOINT_IO_BUFFER_BYTES: usize = 16 * 1024 * 1024;
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+#[no_mangle]
+pub static __libc_single_threaded: ::std::os::raw::c_char = 0;
 const BINCODE_IO_BUFFER_SIZE: usize = 16 * 1024 * 1024;
 
 fn load_bincode_file<T: serde::de::DeserializeOwned>(path: &Path) -> T {
@@ -387,6 +392,7 @@ fn get_kmers_and_snpmers(args: &cli::Cli, output_dir: &PathBuf) -> types::KmerGl
     }
 
     if saved_input && snpmer_info_path.exists() {
+        kmer_info = load_checkpoint(&snpmer_info_path);
         kmer_info = load_bincode_file(&snpmer_info_path);
         log::info!("Loaded snpmer info from file.");
     } else {
@@ -405,6 +411,8 @@ fn get_kmers_and_snpmers(args: &cli::Cli, output_dir: &PathBuf) -> types::KmerGl
             start.elapsed()
         );
 
+        if !args.clean_dir {
+            save_checkpoint(&snpmer_info_path, &kmer_info);
         if !args.clean_dir{
             save_bincode_file(&snpmer_info_path, &kmer_info);
         }
@@ -423,6 +431,7 @@ fn get_twin_reads_from_kmer_info(
     let twin_read_bin_path = output_dir.join("binary_temp").join("twin_reads.bin");
 
     if saved_input && twin_read_bin_path.exists() {
+        twin_read_container = load_checkpoint(&twin_read_bin_path);
         twin_read_container = load_bincode_file(&twin_read_bin_path);
         log::info!("Loaded twin reads from file.");
     } else {
@@ -593,6 +602,8 @@ fn get_twin_reads_from_kmer_info(
             tig_reads: vec![],
         };
 
+        if !args.clean_dir {
+            save_checkpoint(&twin_read_bin_path, &twin_read_container);
         if !args.clean_dir{
             save_bincode_file(&twin_read_bin_path, &twin_read_container);
         }
@@ -612,6 +623,7 @@ fn get_overlaps_from_twin_reads(
 
     let overlaps;
     if args.input_files == [MAGIC_EXIST_STRING] && overlap_bin_path.exists() {
+        overlaps = load_checkpoint(&overlap_bin_path);
         overlaps = load_bincode_file(&overlap_bin_path);
         log::info!("Loaded overlaps from file.");
     } else {
@@ -630,6 +642,12 @@ fn get_overlaps_from_twin_reads(
             "Time elapsed for getting overlaps is: {:?}",
             start.elapsed()
         );
+        log_memory_usage(
+            true,
+            &format!("Obtained {} overlaps between outer reads", overlaps.len()),
+        );
+        if !args.clean_dir {
+            save_checkpoint(&overlap_bin_path, &overlaps);
         log_memory_usage(true, &format!("Obtained {} overlaps between outer reads", overlaps.len()));
         if !args.clean_dir{
             save_bincode_file(&overlap_bin_path, &overlaps);
