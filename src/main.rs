@@ -35,6 +35,20 @@ use rayon::prelude::*;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+const BINCODE_IO_BUFFER_SIZE: usize = 16 * 1024 * 1024;
+
+fn load_bincode_file<T: serde::de::DeserializeOwned>(path: &Path) -> T {
+    let file = File::open(path).unwrap();
+    let reader = BufReader::with_capacity(BINCODE_IO_BUFFER_SIZE, file);
+    bincode::deserialize_from(reader).unwrap()
+}
+
+fn save_bincode_file<T: serde::Serialize>(path: &Path, value: &T) {
+    let file = File::create(path).unwrap();
+    let writer = BufWriter::with_capacity(BINCODE_IO_BUFFER_SIZE, file);
+    bincode::serialize_into(writer, value).unwrap();
+}
+
 fn main() {
     let total_start_time = Instant::now();
     let mut args = cli::Cli::parse();
@@ -311,10 +325,7 @@ fn get_kmers_and_snpmers(args: &cli::Cli, output_dir: &PathBuf) -> types::KmerGl
     }
 
     if saved_input && snpmer_info_path.exists() {
-        kmer_info = bincode::deserialize_from(BufReader::new(
-            File::open(snpmer_info_path).unwrap(),
-        ))
-        .unwrap();
+        kmer_info = load_bincode_file(&snpmer_info_path);
         log::info!("Loaded snpmer info from file.");
     } else {
         let start = Instant::now();
@@ -333,11 +344,7 @@ fn get_kmers_and_snpmers(args: &cli::Cli, output_dir: &PathBuf) -> types::KmerGl
         );
 
         if !args.clean_dir{
-            bincode::serialize_into(
-                BufWriter::new(File::create(snpmer_info_path).unwrap()),
-                &kmer_info,
-            )
-            .unwrap();
+            save_bincode_file(&snpmer_info_path, &kmer_info);
         }
     }
     return kmer_info;
@@ -354,10 +361,7 @@ fn get_twin_reads_from_kmer_info(
     let twin_read_bin_path = output_dir.join("binary_temp").join("twin_reads.bin");
 
     if saved_input && twin_read_bin_path.exists() {
-        twin_read_container = bincode::deserialize_from(BufReader::new(
-            File::open(twin_read_bin_path).unwrap(),
-        ))
-        .unwrap();
+        twin_read_container = load_bincode_file(&twin_read_bin_path);
         log::info!("Loaded twin reads from file.");
     } else {
         // (1) read file, get twin reads
@@ -507,11 +511,7 @@ fn get_twin_reads_from_kmer_info(
         };
 
         if !args.clean_dir{
-            bincode::serialize_into(
-                BufWriter::new(File::create(twin_read_bin_path).unwrap()),
-                &twin_read_container,
-            )
-            .unwrap();
+            save_bincode_file(&twin_read_bin_path, &twin_read_container);
         }
     }
     return twin_read_container;
@@ -529,10 +529,7 @@ fn get_overlaps_from_twin_reads(
 
     let overlaps;
     if args.input_files == [MAGIC_EXIST_STRING] && overlap_bin_path.exists() {
-        overlaps = bincode::deserialize_from(BufReader::new(
-            File::open(overlap_bin_path).unwrap(),
-        ))
-        .unwrap();
+        overlaps = load_bincode_file(&overlap_bin_path);
         log::info!("Loaded overlaps from file.");
     } else {
         log::info!("Getting overlaps between outer reads...");
@@ -552,11 +549,7 @@ fn get_overlaps_from_twin_reads(
         );
         log_memory_usage(true, &format!("Obtained {} overlaps between outer reads", overlaps.len()));
         if !args.clean_dir{
-            bincode::serialize_into(
-                BufWriter::new(File::create(overlap_bin_path).unwrap()),
-                &overlaps,
-            )
-            .unwrap();
+            save_bincode_file(&overlap_bin_path, &overlaps);
         }
     }
 
