@@ -1062,8 +1062,6 @@ fn get_nonoverlapping_chains(
 
             interval_tree_q.insert(q_interval, i);
             interval_tree_r.insert(r_interval, i);
-            let mut cloned_int = int.clone();
-            cloned_int.overlap = sum_overlaps_query;
             good_non_overlap_intervals[int.chunk_id].push(int.clone());
         }
     }
